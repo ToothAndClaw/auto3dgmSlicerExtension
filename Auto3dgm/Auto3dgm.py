@@ -511,7 +511,9 @@ class Auto3dgmLogic(ScriptedLoadableModuleLogic):
       print(perm.shape)
       print(mesh.vertices.shape)
       mesh.rotate(rot)
-      landmarks = perm*mesh.vertices
+      V = mesh.vertices.T
+      lmtranspose = V @ perm
+      landmarks = lmtranspose.T
       mesh = auto3dgm_nazar.mesh.meshfactory.MeshFactory.mesh_from_data(vertices=landmarks,name=mesh.name)
       meshes.append(mesh)
     return(meshes)
@@ -521,6 +523,21 @@ class Auto3dgmLogic(ScriptedLoadableModuleLogic):
     print(filename)
     np.savetxt(filename+".csv",array,delimiter = ",",fmt = "%s")
     print(str(array) + " saved to file " + str(filename))
+  
+  def saveNumpyArrayToFcsv(array,filename):
+      #print(array)
+      #print(filename)
+      l = np.shape(array)[0]
+      fname2 = filename + ".fcsv"
+      file = open(fname2,"w")
+      file.write("# Markups fiducial file version = 4.4 \n")
+      file.write("# columns = id,x,y,z,vis,sel \n")
+      for i in range(l):
+          file.write("p" + str(i) + ",")
+          file.write(str(array[i,0]) + "," + str(array[i,1]) + "," + str(array[i,2]) + ",1,1 \n")
+      file.close()
+      print("file " + str(filename) + ".fcsv saved \n" )
+
 
   def alignOriginalMeshes(Auto3dgmData, phase = 2):
     if 'Phase 2' in Auto3dgmData.datasetCollection.analysis_sets:
@@ -597,7 +614,7 @@ class Auto3dgmLogic(ScriptedLoadableModuleLogic):
     landmarks = Auto3dgmLogic.landmarksFromPseudoLandmarks(m, p, r)
 
     for l in landmarks:
-      Auto3dgmLogic.saveNumpyArrayToCsv(l.vertices, os.path.join(exportFolder, l.name))
+      Auto3dgmLogic.saveNumpyArrayToFcsv(l.vertices, os.path.join(exportFolder, l.name))
 
   def prepareDirs(exportFolder, subDirs=[]):
     if not os.path.exists(exportFolder):
