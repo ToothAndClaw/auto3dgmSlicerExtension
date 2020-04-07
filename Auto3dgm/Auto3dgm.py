@@ -465,7 +465,7 @@ class Auto3dgmLogic(ScriptedLoadableModuleLogic):
 
   # Logic service function AL001.001 Create dataset
   def createDataset(inputdirectory):
-    dataset = DatasetFactory.ds_from_dir(inputdirectory,center_scale=True)
+    dataset = DatasetFactory.ds_from_dir(inputdirectory,center_scale=False)
     return dataset
 
   # Logic service function AL002.1 Subsample
@@ -510,9 +510,9 @@ class Auto3dgmLogic(ScriptedLoadableModuleLogic):
       rot = rotations[i]
       print(perm.shape)
       print(mesh.vertices.shape)
-      mesh.rotate(rot)
-      V = mesh.vertices.T
-      lmtranspose = V @ perm
+      vtranspose = mesh.initial_vertices.T
+      vtranspose= np.matmul(rot,vtranspose)
+      lmtranspose = vtranspose @ perm
       landmarks = lmtranspose.T
       mesh = auto3dgm_nazar.mesh.meshfactory.MeshFactory.mesh_from_data(vertices=landmarks,name=mesh.name)
       meshes.append(mesh)
@@ -557,7 +557,7 @@ class Auto3dgmLogic(ScriptedLoadableModuleLogic):
       name=meshes[t].name
       vertices=np.transpose(np.matmul(R,np.transpose(verts)))
       faces=faces.astype('int64')
-      aligned_mesh=auto3dgm_nazar.mesh.meshfactory.MeshFactory.mesh_from_data(vertices, faces=faces, name=name, center_scale=True, deep=True)
+      aligned_mesh=auto3dgm_nazar.mesh.meshfactory.MeshFactory.mesh_from_data(vertices, faces=faces, name=name, center_scale=False, deep=True)
       Auto3dgmData.aligned_meshes.append(aligned_mesh)
     return(Auto3dgmData)
 
@@ -595,7 +595,7 @@ class Auto3dgmLogic(ScriptedLoadableModuleLogic):
     for idx, mesh in enumerate(m):
       new_vertices = np.transpose(r[idx] @ np.transpose(mesh.vertices))
       new_faces = mesh.faces.astype('int64')
-      new_mesh = MeshFactory.mesh_from_data(new_vertices, faces=new_faces, name=mesh.name, center_scale=True, deep=True)
+      new_mesh = MeshFactory.mesh_from_data(new_vertices, faces=new_faces, name=mesh.name, center_scale=False, deep=True)
       MeshExport.writeToFile(exportFolder, new_mesh, format='ply')
 
   def exportAlignedLandmarks(Auto3dgmData, exportFolder, phase = 2):
