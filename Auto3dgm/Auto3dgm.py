@@ -4,6 +4,7 @@ import unittest
 import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 import logging
+import pdb
 
 import auto3dgm_nazar
 from auto3dgm_nazar.mesh.meshexport import MeshExport
@@ -146,21 +147,9 @@ class Auto3dgmWidget(ScriptedLoadableModuleWidget):
     self.reflectionCheckBox.setToolTip("Whether meshes can be reflected/mirrored to achieve more optimal alignments.")
     self.parameterLayout.addRow("Allow reflection", self.reflectionCheckBox)
 
-    self.subsampleComboBox = qt.QComboBox()
-    self.subsampleComboBox.addItem("FPS (Furthest Point Sampling)")
-    self.subsampleComboBox.addItem("GPL (Gaussian Process Landmarks)")
-    self.subsampleComboBox.addItem("FPS/GPL Hybrid")
-    self.parameterLayout.addRow("Subsampling", self.subsampleComboBox)
-
     self.fpsSeed = qt.QSpinBox()
     self.fpsSeed.setSpecialValueText('-')
     self.parameterLayout.addRow("Optional FPS Seed", self.fpsSeed)
-
-    self.hybridPoints = qt.QSpinBox()
-    self.hybridPoints.setSpecialValueText('-')
-    self.hybridPoints.setMinimum(1)
-    self.hybridPoints.setMaximum(1000)
-    self.parameterLayout.addRow("Hybrid GPL Points", self.hybridPoints)
 
     self.phaseChoiceComboBox = qt.QComboBox()
     self.phaseChoiceComboBox.addItem("1 (Single Alignment Pass)")
@@ -171,20 +160,14 @@ class Auto3dgmWidget(ScriptedLoadableModuleWidget):
     self.phase1PointNumber = qt.QSpinBox()
     self.phase1PointNumber.setMinimum(1)
     self.phase1PointNumber.setMaximum(100000)
-    self.phase1PointNumber.setValue(200)
+    self.phase1PointNumber.setValue(40)
     self.parameterLayout.addRow("Phase 1 Points", self.phase1PointNumber)
 
     self.phase2PointNumber = qt.QSpinBox()
     self.phase2PointNumber.setMinimum(1)
     self.phase2PointNumber.setMaximum(1000000)
-    self.phase2PointNumber.setValue(1000)
+    self.phase2PointNumber.setValue(100)
     self.parameterLayout.addRow("Phase 2 Points", self.phase2PointNumber)
-
-    self.processingComboBox = qt.QComboBox()
-    self.processingComboBox.addItem("Local Single CPU Core")
-    self.processingComboBox.addItem("Local Multiple CPU Cores")
-    self.processingComboBox.addItem("Cluster/Grid")
-    self.parameterLayout.addRow("Processing", self.processingComboBox)
 
   def selectMeshFolder(self):
       self.meshFolder=qt.QFileDialog().getExistingDirectory()
@@ -465,7 +448,7 @@ class Auto3dgmLogic(ScriptedLoadableModuleLogic):
 
   # Logic service function AL001.001 Create dataset
   def createDataset(inputdirectory):
-    dataset = DatasetFactory.ds_from_dir(inputdirectory,center_scale=False)
+    dataset = DatasetFactory.ds_from_dir(inputdirectory,center_scale=True)
     return dataset
 
   # Logic service function AL002.1 Subsample
@@ -510,9 +493,9 @@ class Auto3dgmLogic(ScriptedLoadableModuleLogic):
       rot = rotations[i]
       print(perm.shape)
       print(mesh.vertices.shape)
-      vtranspose = mesh.initial_vertices.T
-      vtranspose= np.matmul(rot,vtranspose)
-      lmtranspose = vtranspose @ perm
+      mesh.rotate(rot)
+      V = mesh.vertices.T
+      lmtranspose = V @ perm
       landmarks = lmtranspose.T
       mesh = auto3dgm_nazar.mesh.meshfactory.MeshFactory.mesh_from_data(vertices=landmarks,name=mesh.name)
       meshes.append(mesh)
@@ -557,7 +540,7 @@ class Auto3dgmLogic(ScriptedLoadableModuleLogic):
       name=meshes[t].name
       vertices=np.transpose(np.matmul(R,np.transpose(verts)))
       faces=faces.astype('int64')
-      aligned_mesh=auto3dgm_nazar.mesh.meshfactory.MeshFactory.mesh_from_data(vertices, faces=faces, name=name, center_scale=False, deep=True)
+      aligned_mesh=auto3dgm_nazar.mesh.meshfactory.MeshFactory.mesh_from_data(vertices, faces=faces, name=name, center_scale=True, deep=True)
       Auto3dgmData.aligned_meshes.append(aligned_mesh)
     return(Auto3dgmData)
 
@@ -575,11 +558,12 @@ class Auto3dgmLogic(ScriptedLoadableModuleLogic):
         raise ValueError('Unacceptable phase number passed to Auto3dgmLogic.exportData')
         
       exportFolder = os.path.join(outputFolder, 'phase' + str(p))
-      subDirs = ['aligned_meshes', 'aligned_landmarks']
+      subDirs = ['aligned_meshes', 'aligned_landmarks', 'rotations']
 
       Auto3dgmLogic.prepareDirs(exportFolder, subDirs)
       Auto3dgmLogic.exportAlignedMeshes(Auto3dgmData, os.path.join(exportFolder, subDirs[0]), p)
       Auto3dgmLogic.exportAlignedLandmarks(Auto3dgmData, os.path.join(exportFolder, subDirs[1]), p)
+      Auto3dgmLogic.exportRotations(Auto3dgmData, os.path.join(exportFolder, subDirs[2]), p)
 
   def exportAlignedMeshes(Auto3dgmData, exportFolder, phase = 2):
     if phase == 1:
@@ -595,7 +579,7 @@ class Auto3dgmLogic(ScriptedLoadableModuleLogic):
     for idx, mesh in enumerate(m):
       new_vertices = np.transpose(r[idx] @ np.transpose(mesh.vertices))
       new_faces = mesh.faces.astype('int64')
-      new_mesh = MeshFactory.mesh_from_data(new_vertices, faces=new_faces, name=mesh.name, center_scale=False, deep=True)
+      new_mesh = MeshFactory.mesh_from_data(new_vertices, faces=new_faces, name=mesh.name, center_scale=True, deep=True)
       MeshExport.writeToFile(exportFolder, new_mesh, format='ply')
 
   def exportAlignedLandmarks(Auto3dgmData, exportFolder, phase = 2):
@@ -615,6 +599,24 @@ class Auto3dgmLogic(ScriptedLoadableModuleLogic):
 
     for l in landmarks:
       Auto3dgmLogic.saveNumpyArrayToFcsv(l.vertices, os.path.join(exportFolder, l.name))
+
+
+  def exportRotations(Auto3dgmData, exportFolder, phase = 2):
+    if phase == 1:
+      label = "Phase 1"
+    elif phase == 2:
+      label = "Phase 2"
+    else:
+      raise ValueError('Unaccepted phase number passed to Auto3dgmLogic.')
+
+  pdb.set_trace()
+  m = Auto3dgmData.datasetCollection.datasets[0]
+  r = Auto3dgmData.datasetCollection.analysis_sets[label].globalized_alignment['r']
+
+  for idx, mesh in enumerate(m):
+    rot = r[idx]
+    Auto3dgmLogic.saveNumpyArrayToCsv(rot, os.path.join(exportFolder), mesh.name)
+
 
   def prepareDirs(exportFolder, subDirs=[]):
     if not os.path.exists(exportFolder):
